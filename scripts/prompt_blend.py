@@ -7,7 +7,7 @@ from modules.shared import opts, cmd_opts, state
 
 class Script(scripts.Script):
     def title(self):
-        return "Text blend"
+        return "Prompt blend"
 
     def show(self, is_img2img):
         return not is_img2img
