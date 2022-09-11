@@ -55,6 +55,7 @@ class StableDiffusionProcessing:
         self.extra_generation_params: dict = extra_generation_params
         self.overlay_images = overlay_images
         self.paste_to = None
+        self.cond_override = None
 
     def init(self, seed):
         pass
@@ -174,7 +175,7 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
         all_prompts = p.batch_size * p.n_iter * [prompt]
 
     if type(p.seed) == list:
-        all_seeds = int(p.seed)
+        all_seeds = p.seed
     else:
         all_seeds = [int(p.seed + x) for x in range(len(all_prompts))]
 
@@ -230,6 +231,10 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
 
             uc = p.sd_model.get_learned_conditioning(len(prompts) * [p.negative_prompt])
             c = p.sd_model.get_learned_conditioning(prompts)
+
+            if p.cond_override is not None:
+                c = p.cond_override(n)
+                print("cond overridden!")
 
             if len(model_hijack.comments) > 0:
                 comments += model_hijack.comments
