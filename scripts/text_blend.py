@@ -7,17 +7,28 @@ from modules.shared import opts, cmd_opts, state
 
 class Script(scripts.Script):
     def title(self):
-        return "Image Morph"
+        return "Text blend"
 
     def show(self, is_img2img):
         return not is_img2img
 
     def ui(self, is_img2img):
-        start_prompt = gr.Textbox(label="Start Prompt", visible=True, lines=1)
-        end_prompt = gr.Textbox(label="End Prompt", visible=True, lines=1)
-        return [start_prompt,end_prompt]
+        start_prompt = gr.Textbox(label="Start Prompt", lines=1)
+        end_prompt = gr.Textbox(label="End Prompt", lines=1)
+        prompt_usage = gr.Dropdown(label="Main prompt", choices=["Ignore","Prefix","Suffix"], value="Ignore")
 
-    def run(self, p, start_prompt, end_prompt):
+        return [start_prompt,end_prompt,prompt_usage]
+
+    def run(self, p, start_prompt, end_prompt, prompt_usage):
+
+        if prompt_usage == "Prefix":
+            start_prompt = f"{p.prompt} {start_prompt}"
+            end_prompt = f"{p.prompt} {end_prompt}"
+
+        if prompt_usage == "Suffix":
+            start_prompt = f"{start_prompt} {p.prompt}"
+            end_prompt = f"{end_prompt} {p.prompt}"
+            
 
         def override(iter):
             start_cond = p.sd_model.get_learned_conditioning([start_prompt]*p.batch_size)
@@ -27,6 +38,8 @@ class Script(scripts.Script):
             mix_cond = start_cond * (1.0-blend_percent) + end_cond * blend_percent
 
             return mix_cond
+
+        
 
         p.prompt = f"{start_prompt} to {end_prompt}"
 
