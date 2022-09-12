@@ -234,7 +234,6 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
 
             if p.cond_override is not None:
                 c = p.cond_override(n)
-                print("cond overridden!")
 
             if len(model_hijack.comments) > 0:
                 comments += model_hijack.comments

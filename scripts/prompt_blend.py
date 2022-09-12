@@ -1,7 +1,8 @@
 import modules.scripts as scripts
 import gradio as gr
+import torch
 
-from modules.processing import Processed, process_images
+from modules.processing import Processed, fix_seed, process_images
 from modules.shared import opts, cmd_opts, state
 
 
@@ -13,13 +14,18 @@ class Script(scripts.Script):
         return not is_img2img
 
     def ui(self, is_img2img):
-        start_prompt = gr.Textbox(label="Start Prompt", lines=1)
-        end_prompt = gr.Textbox(label="End Prompt", lines=1)
-        prompt_usage = gr.Dropdown(label="Main prompt", choices=["Ignore","Prefix","Suffix"], value="Ignore")
+           
+        start_prompt = gr.Textbox(label="Start prompt", lines=1)
+        end_prompt = gr.Textbox(label="End prompt", lines=1)
+            
+        with gr.Row():
+            start_percent = gr.Number(label="Start percent", value=0.0)
+            end_percent = gr.Number(label="End percent", value=1.0)
+            prompt_usage = gr.Dropdown(label="Main prompt", choices=["Ignore","Prefix","Suffix"], value="Ignore")
 
-        return [start_prompt,end_prompt,prompt_usage]
+        return [start_prompt, end_prompt, start_percent, end_percent, prompt_usage]
 
-    def run(self, p, start_prompt, end_prompt, prompt_usage):
+    def run(self, p, start_prompt, end_prompt, start_percent, end_percent, prompt_usage):
 
         if prompt_usage == "Prefix":
             start_prompt = f"{p.prompt} {start_prompt}"
@@ -29,25 +35,24 @@ class Script(scripts.Script):
             start_prompt = f"{start_prompt} {p.prompt}"
             end_prompt = f"{end_prompt} {p.prompt}"
             
-
-        def override(iter):
+        def cond_override(iter):
             start_cond = p.sd_model.get_learned_conditioning([start_prompt]*p.batch_size)
             end_cond = p.sd_model.get_learned_conditioning([end_prompt]*p.batch_size)
 
-            blend_percent = iter/(p.n_iter-1) if p.n_iter > 1 else 0
-            mix_cond = start_cond * (1.0-blend_percent) + end_cond * blend_percent
+            blend_percent = iter/(p.n_iter-1) if p.n_iter > 1 else 0.5
+            blend_percent = start_percent + blend_percent * (end_percent-start_percent) #remap percent to within a specific range
 
-            return mix_cond
-
-        
+            return torch.lerp(start_cond,end_cond,blend_percent)
 
         p.prompt = f"{start_prompt} to {end_prompt}"
 
-        p.seed = p.n_iter*p.batch_size * [123]
+        fix_seed(p)
+        p.seed = p.n_iter*p.batch_size * [int(p.seed)]
 
+        p.extra_generation_params = {"Start percent":start_percent,"End percent":end_percent}
         #p.extra_generation_params = {"Start prompt":start_prompt,"End prompt":end_prompt}
 
-        p.cond_override = override
+        p.cond_override = cond_override
         processed = process_images(p)
         p.cond_override = None
 
