@@ -37,13 +37,15 @@ goto :show_stdout_stderr
 set PYTHON="%~dp0%VENV_DIR%\Scripts\Python.exe"
 %PYTHON% --version
 echo venv %PYTHON%
-goto :install_torch
+goto :print_commit
 
 :skip_venv
 %PYTHON% --version
 
-:install_torch
+:print_commit
+%GIT% rev-parse HEAD
 
+:install_torch
 %PYTHON% -c "import torch" >tmp/stdout.txt 2>tmp/stderr.txt
 if %ERRORLEVEL% == 0 goto :check_gpu
 echo Installing torch...
@@ -85,15 +87,12 @@ if %ERRORLEVEL% == 0 goto :install_reqs
 goto :show_stdout_stderr
 
 :install_reqs
-%PYTHON% -c "import omegaconf" >tmp/stdout.txt 2>tmp/stderr.txt
+%PYTHON% -c "import omegaconf; import fonts; import timm" >tmp/stdout.txt 2>tmp/stderr.txt
 if %ERRORLEVEL% == 0 goto :make_dirs
 echo Installing requirements...
 %PYTHON% -m pip install -r %REQS_FILE% --prefer-binary >tmp/stdout.txt 2>tmp/stderr.txt
-if %ERRORLEVEL% == 0 goto :update_numpy
+if %ERRORLEVEL% == 0 goto :make_dirs
 goto :show_stdout_stderr
-
-:update_numpy
-%PYTHON% -m pip install -U numpy --prefer-binary >tmp/stdout.txt 2>tmp/stderr.txt
 
 :make_dirs
 mkdir repositories 2>NUL
@@ -120,24 +119,19 @@ goto :show_stdout_stderr
 
 :install_codeformer_reqs
 %PYTHON% -c "import lpips" >tmp/stdout.txt 2>tmp/stderr.txt
-if %ERRORLEVEL% == 0 goto :check_model
+if %ERRORLEVEL% == 0 goto :clone_blip
 echo Installing requirements for CodeFormer...
 %PYTHON% -m pip install -r repositories\CodeFormer\requirements.txt --prefer-binary >tmp/stdout.txt 2>tmp/stderr.txt
-if %ERRORLEVEL% == 0 goto :check_model
+if %ERRORLEVEL% == 0 goto :clone_blip
 goto :show_stdout_stderr
 
-
-:check_model
-dir model.ckpt >tmp/stdout.txt 2>tmp/stderr.txt
-if %ERRORLEVEL% == 0 goto :check_gfpgan
-echo Stable Diffusion model not found: you need to place model.ckpt file into same directory as this file.
-goto :show_stdout_stderr
-
-:check_gfpgan
-dir GFPGANv1.3.pth >tmp/stdout.txt 2>tmp/stderr.txt
-if %ERRORLEVEL% == 0 goto :launch
-echo GFPGAN not found: you need to place GFPGANv1.3.pth file into same directory as this file.
-echo Face fixing feature will not work.
+:clone_blip
+if exist repositories\BLIP goto :launch
+echo Cloning BLIP repository...
+%GIT% clone https://github.com/salesforce/BLIP.git repositories\BLIP >tmp/stdout.txt 2>tmp/stderr.txt
+if %ERRORLEVEL% NEQ 0 goto :show_stdout_stderr
+%GIT% -C repositories/BLIP checkout 48211a1594f1321b00f14c9f7a5b4813144b2fb9 >tmp/stdout.txt 2>tmp/stderr.txt
+if %ERRORLEVEL% NEQ 0 goto :show_stdout_stderr
 
 :launch
 echo Launching webui.py...

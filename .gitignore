@@ -13,3 +13,7 @@ __pycache__
 /embeddings
 *.pth
 *.TTF
+/styles.csv
+/styles.csv.bak
+/webui-user.bat
+/interrogate

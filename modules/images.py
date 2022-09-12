@@ -5,8 +5,11 @@ import re
 
 import numpy as np
 from PIL import Image, ImageFont, ImageDraw, PngImagePlugin
+from fonts.ttf import Roboto
+import string
 
 import modules.shared
+from modules import sd_samplers, shared
 from modules.shared import opts
 
 LANCZOS = (Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS)
@@ -132,7 +135,12 @@ def draw_grid_annotations(im, width, height, hor_texts, ver_texts):
 
     fontsize = (width + height) // 25
     line_spacing = fontsize // 2
-    fnt = ImageFont.truetype(opts.font, fontsize)
+
+    try:
+        fnt = ImageFont.truetype(opts.font or Roboto, fontsize)
+    except Exception:
+        fnt = ImageFont.truetype(Roboto, fontsize)
+
     color_active = (0, 0, 0)
     color_inactive = (153, 153, 153)
 
@@ -234,32 +242,63 @@ def resize_image(resize_mode, im, width, height):
 
 
 invalid_filename_chars = '<>:"/\\|?*\n'
+re_nonletters = re.compile(r'[\s'+string.punctuation+']+')
 
 
-def sanitize_filename_part(text):
-    return text.replace(' ', '_').translate({ord(x): '' for x in invalid_filename_chars})[:128]
+def sanitize_filename_part(text, replace_spaces=True):
+    if replace_spaces:
+        text = text.replace(' ', '_')
+
+    return text.translate({ord(x): '' for x in invalid_filename_chars})[:128]
 
 
-def save_image(image, path, basename, seed=None, prompt=None, extension='png', info=None, short_filename=False, no_prompt=False):
+def save_image(image, path, basename, seed=None, prompt=None, extension='png', info=None, short_filename=False, no_prompt=False, pnginfo_section_name='parameters', p=None, existing_info=None):
+    # would be better to add this as an argument in future, but will do for now
+    is_a_grid = basename != ""
+
     if short_filename or prompt is None or seed is None:
         file_decoration = ""
     elif opts.save_to_dirs:
-        file_decoration = f"-{seed}"
+        file_decoration = opts.samples_filename_format or "[seed]"
     else:
-        file_decoration = f"-{seed}-{sanitize_filename_part(prompt)[:128]}"
+        file_decoration = opts.samples_filename_format or "[seed]-[prompt_spaces]"
+
+    if file_decoration != "":
+        file_decoration = "-" + file_decoration.lower()
+
+    if seed is not None:
+        file_decoration = file_decoration.replace("[seed]", str(seed))
+    if prompt is not None:
+        file_decoration = file_decoration.replace("[prompt]", sanitize_filename_part(prompt)[:128])
+        file_decoration = file_decoration.replace("[prompt_spaces]", sanitize_filename_part(prompt, replace_spaces=False)[:128])
+    if p is not None:
+        file_decoration = file_decoration.replace("[steps]", str(p.steps))
+        file_decoration = file_decoration.replace("[cfg]", str(p.cfg_scale))
+        file_decoration = file_decoration.replace("[width]", str(p.width))
+        file_decoration = file_decoration.replace("[height]", str(p.height))
+        file_decoration = file_decoration.replace("[sampler]", sd_samplers.samplers[p.sampler_index].name)
+
+    file_decoration = file_decoration.replace("[model_hash]", shared.sd_model_hash)
 
     if extension == 'png' and opts.enable_pnginfo and info is not None:
         pnginfo = PngImagePlugin.PngInfo()
-        pnginfo.add_text("parameters", info)
+
+        if existing_info is not None:
+            for k, v in existing_info.items():
+                pnginfo.add_text(k, v)
+
+        pnginfo.add_text(pnginfo_section_name, info)
     else:
         pnginfo = None
 
-    if opts.save_to_dirs and not no_prompt:
-        words = re.findall(r'\w+', prompt or "")
+    save_to_dirs = (is_a_grid and opts.grid_save_to_dirs) or (not is_a_grid and opts.save_to_dirs)
+
+    if save_to_dirs and not no_prompt:
+        words = [x for x in re_nonletters.split(prompt or "") if len(x)>0]
         if len(words) == 0:
             words = ["empty"]
 
-        dirname = " ".join(words[0:opts.save_to_dirs_prompt_len])
+        dirname = " ".join(words[0:opts.save_to_dirs_prompt_len]).strip()
         path = os.path.join(path, dirname)
 
     os.makedirs(path, exist_ok=True)
@@ -307,7 +346,7 @@ class Upscaler:
             img = self.do_upscale(img)
 
         if img.width != w or img.height != h:
-            img = img.resize((w, h), resample=LANCZOS)
+            img = img.resize((int(w), int(h)), resample=LANCZOS)
 
         return img
 
