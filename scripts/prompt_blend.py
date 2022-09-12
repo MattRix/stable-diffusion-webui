@@ -37,24 +37,34 @@ class Script(scripts.Script):
             
         #replace the conditioning with a blend between the start prompt and end prompt conditioning 
         def cond_override(iter,uc,c):
-            start_cond = p.sd_model.get_learned_conditioning([start_prompt]*p.batch_size)
-            end_cond = p.sd_model.get_learned_conditioning([end_prompt]*p.batch_size)
+            start_cond = p.sd_model.get_learned_conditioning([start_prompt])
+            end_cond = p.sd_model.get_learned_conditioning([end_prompt])
+            
+            bs = p.batch_size
 
-            #if we are only generating one image, create a 50% blend between start and end prompt
-            blend_percent = iter/(p.n_iter-1) if p.n_iter > 1 else 0.5
+            blended_conds = []
 
-            #remap percent to within a specific range
-            blend_percent = start_percent + blend_percent * (end_percent-start_percent)
+            for b in range(bs):
+                
+                total = p.n_iter*bs 
+                i = iter*bs + b
 
-            blend_cond = torch.lerp(start_cond,end_cond,blend_percent)
+                #if we are only generating one image, create a 50% blend between start and end prompt
+                #blend_percent = iter/(p.n_iter-1) if p.n_iter > 1 else 0.5
 
-            return (uc,blend_cond)
+                blend_percent = i/(total-1) if total > 1 else 0.5
+
+                #remap percent to within a specific range
+                blend_percent = start_percent + blend_percent * (end_percent-start_percent)
+
+                blended_conds.append(torch.lerp(start_cond,end_cond,blend_percent))
+
+            return (uc,torch.cat(blended_conds))
 
         p.prompt = f"{start_prompt} to {end_prompt}"
 
-        #keep the seed to stay the same for each iteration
-        fix_seed(p)
-        p.seed = p.n_iter*p.batch_size * [int(p.seed)]
+        fix_seed(p) #use the specified seed or get a random one if needed
+        p.seed = p.n_iter*p.batch_size * [int(p.seed)] #force the seed to stay the same for each iteration
 
         p.extra_generation_params = {"Start percent":start_percent,"End percent":end_percent}
 

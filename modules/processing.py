@@ -121,6 +121,8 @@ def create_random_tensors(shape, seeds, subseeds=None, subseed_strength=0.0, see
             #noise = subnoise * subseed_strength + noise * (1 - subseed_strength)
             noise = slerp(subseed_strength, noise, subnoise)
 
+        print(f"actually using seed {seed} with subnoise? {subnoise is not None}")
+
         if noise_shape != shape:
             #noise = torch.nn.functional.interpolate(noise.unsqueeze(1), size=shape[1:], mode="bilinear").squeeze()
             # noise_shape = (64, 80)
@@ -228,6 +230,8 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
 
             prompts = all_prompts[n * p.batch_size:(n + 1) * p.batch_size]
             seeds = all_seeds[n * p.batch_size:(n + 1) * p.batch_size]
+
+            print(f"iter {n} using seeds {seeds}")
 
             uc = p.sd_model.get_learned_conditioning(len(prompts) * [p.negative_prompt])
             c = p.sd_model.get_learned_conditioning(prompts)
