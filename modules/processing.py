@@ -233,7 +233,7 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
             c = p.sd_model.get_learned_conditioning(prompts)
 
             if p.cond_override is not None:
-                c = p.cond_override(n)
+                (uc,c) = p.cond_override(n,uc,c)
 
             if len(model_hijack.comments) > 0:
                 comments += model_hijack.comments
