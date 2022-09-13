@@ -13,6 +13,7 @@ class Script(scripts.Script):
         return True
 
     def ui(self, is_img2img):
+
         start_prompt = gr.Textbox(label="Start prompt", lines=1)
         end_prompt = gr.Textbox(label="End prompt", lines=1)
             
@@ -35,10 +36,10 @@ class Script(scripts.Script):
             start_prompt = f"{start_prompt} {p.prompt}"
             end_prompt = f"{end_prompt} {p.prompt}"
 
+        self.original_sample = p.sample
+
         self.total = p.n_iter*p.batch_size 
         self.iteration = 0
-
-        self.original_sample = p.sample
 
         def sample_extra (x, conditioning, unconditional_conditioning):
 
