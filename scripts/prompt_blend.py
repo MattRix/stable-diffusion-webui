@@ -49,11 +49,10 @@ class Script(scripts.Script):
             conds = []
 
             for _ in range(p.batch_size):
-                blend_percent = self.iteration/(self.total-1) if self.total > 1 else 0.5 #if we are only generating one image, create a 50% blend between start and end prompt 
-                blend_percent = start_percent + blend_percent * (end_percent-start_percent) #remap percent to within a specific range
-                conds.append(torch.lerp(start_cond,end_cond,blend_percent)) #blend/lerp between the actual conditioning tensors 
-
-                self.iteration += 1 #we want to blend smoothly within the batches 
+                blend_percent = self.iteration/(self.total-1) if self.total > 1 else 0.5 # if we are only generating one image, create a 50% blend between start and end prompt 
+                blend_percent = start_percent + blend_percent * (end_percent-start_percent) # remap percent to within a specific range
+                conds.append(torch.lerp(start_cond,end_cond,blend_percent)) # blend/lerp between the actual conditioning tensors 
+                self.iteration += 1 # we want to blend smoothly within each batch
 
             conditioning = torch.cat(conds)
 
@@ -65,8 +64,8 @@ class Script(scripts.Script):
     
         p.prompt = f"{start_prompt} to {end_prompt}"
 
-        fix_seed(p) #use the specified seed or get a random one if needed
-        p.seed = p.n_iter*p.batch_size * [int(p.seed)] #force the seed to stay the same for each iteration
+        fix_seed(p) # use the specified seed or get a random one if needed
+        p.seed = p.n_iter*p.batch_size * [int(p.seed)] # force the seed to stay the same for each iteration
 
         p.extra_generation_params = {"Start percent":start_percent,"End percent":end_percent}
 
