@@ -3,10 +3,13 @@ import gradio as gr
 import torch
 
 from modules.processing import Processed, fix_seed, process_images
+from modules import processing, shared, sd_samplers
+from modules.sd_samplers import samplers
 from modules.shared import opts, cmd_opts, state
 
 
 class Script(scripts.Script):
+
     def title(self):
         return "Prompt blend"
 
@@ -36,26 +39,36 @@ class Script(scripts.Script):
             start_prompt = f"{start_prompt} {p.prompt}"
             end_prompt = f"{end_prompt} {p.prompt}"
 
-        def prepare():
+
+        self.total = p.n_iter*p.batch_size 
+        self.i = 0
+
+        def sample_extra (x, conditioning, unconditional_conditioning):
+
             start_cond = p.sd_model.get_learned_conditioning([start_prompt])
             end_cond = p.sd_model.get_learned_conditioning([end_prompt])
-            
-            p.conds = []
 
-            total = p.n_iter*p.batch_size 
+            conds = []
 
-            for i in range(p.n_iter*p.batch_size):
+            for _ in range(p.batch_size):
                 #if we are only generating one image, create a 50% blend between start and end prompt
-                #blend_percent = iter/(p.n_iter-1) if p.n_iter > 1 else 0.5
-
-                blend_percent = i/(total-1) if total > 1 else 0.5
+                blend_percent = self.i/(self.total-1) if self.total > 1 else 0.5
 
                 #remap percent to within a specific range
                 blend_percent = start_percent + blend_percent * (end_percent-start_percent)
 
-                p.conds.append(torch.lerp(start_cond,end_cond,blend_percent))
+                conds.append(torch.lerp(start_cond,end_cond,blend_percent))
 
-        p.prepare = prepare
+                self.i += 1
+
+            conditioning = torch.cat(conds)
+
+            sampler = samplers[p.sampler_index].constructor(p.sd_model)
+            samples_ddim = sampler.sample(p, x, conditioning, unconditional_conditioning)
+            
+            return samples_ddim
+
+        p.sample = sample_extra
         
         p.prompt = f"{start_prompt} to {end_prompt}"
 
