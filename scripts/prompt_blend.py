@@ -25,6 +25,7 @@ class Script(scripts.Script):
 
         return [start_prompt, end_prompt, start_percent, end_percent, prompt_usage]
 
+
     def run(self, p, start_prompt, end_prompt, start_percent, end_percent, prompt_usage):
 
         if prompt_usage == "Prefix":
@@ -34,21 +35,16 @@ class Script(scripts.Script):
         if prompt_usage == "Suffix":
             start_prompt = f"{start_prompt} {p.prompt}"
             end_prompt = f"{end_prompt} {p.prompt}"
-            
-        #replace the conditioning with a blend between the start prompt and end prompt conditioning 
-        def cond_override(iter,uc,c):
+
+        def prepare():
             start_cond = p.sd_model.get_learned_conditioning([start_prompt])
             end_cond = p.sd_model.get_learned_conditioning([end_prompt])
             
-            bs = p.batch_size
+            p.conds = []
 
-            blended_conds = []
+            total = p.n_iter*p.batch_size 
 
-            for b in range(bs):
-                
-                total = p.n_iter*bs 
-                i = iter*bs + b
-
+            for i in range(p.n_iter*p.batch_size):
                 #if we are only generating one image, create a 50% blend between start and end prompt
                 #blend_percent = iter/(p.n_iter-1) if p.n_iter > 1 else 0.5
 
@@ -57,10 +53,10 @@ class Script(scripts.Script):
                 #remap percent to within a specific range
                 blend_percent = start_percent + blend_percent * (end_percent-start_percent)
 
-                blended_conds.append(torch.lerp(start_cond,end_cond,blend_percent))
+                p.conds.append(torch.lerp(start_cond,end_cond,blend_percent))
 
-            return (uc,torch.cat(blended_conds))
-
+        p.prepare = prepare
+        
         p.prompt = f"{start_prompt} to {end_prompt}"
 
         fix_seed(p) #use the specified seed or get a random one if needed
@@ -68,9 +64,7 @@ class Script(scripts.Script):
 
         p.extra_generation_params = {"Start percent":start_percent,"End percent":end_percent}
 
-        p.cond_override = cond_override
         processed = process_images(p)
-        p.cond_override = None
 
         return processed
 

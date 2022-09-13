@@ -53,7 +53,9 @@ class StableDiffusionProcessing:
         self.extra_generation_params: dict = extra_generation_params
         self.overlay_images = overlay_images
         self.paste_to = None
-        self.cond_override = None
+        self.prepare = None
+        self.uconds = None
+        self.conds = None
 
     def init(self, seed):
         pass
@@ -120,8 +122,6 @@ def create_random_tensors(shape, seeds, subseeds=None, subseed_strength=0.0, see
             #noise = subnoise * subseed_strength + noise * (1 - subseed_strength)
             noise = slerp(subseed_strength, noise, subnoise)
 
-        print(f"actually using seed {seed} with subnoise? {subnoise is not None}")
-
         if noise_shape != shape:
             #noise = torch.nn.functional.interpolate(noise.unsqueeze(1), size=shape[1:], mode="bilinear").squeeze()
             x = devices.randn(seed, shape)
@@ -136,8 +136,6 @@ def create_random_tensors(shape, seeds, subseeds=None, subseed_strength=0.0, see
 
             x[:, ty:ty+h, tx:tx+w] = noise[:, dy:dy+h, dx:dx+w]
             noise = x
-
-
 
         xs.append(noise)
     x = torch.stack(xs).to(shared.device)
@@ -217,6 +215,7 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
     ema_scope = (contextlib.nullcontext if cmd_opts.lowvram else p.sd_model.ema_scope)
     with torch.no_grad(), precision_scope("cuda"), ema_scope():
         p.init(seed=all_seeds[0])
+        if p.prepare is not None: p.prepare()
 
         if state.job_count == -1:
             state.job_count = p.n_iter
@@ -229,13 +228,15 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
             seeds = all_seeds[n * p.batch_size:(n + 1) * p.batch_size]
             subseeds = all_subseeds[n * p.batch_size:(n + 1) * p.batch_size]
 
-            print(f"iter {n} using seeds {seeds}")
+            if p.conds is not None:
+                c = torch.cat(p.conds[n * p.batch_size:(n + 1) * p.batch_size])
+            else:
+                c = p.sd_model.get_learned_conditioning(prompts)
 
-            uc = p.sd_model.get_learned_conditioning(len(prompts) * [p.negative_prompt])
-            c = p.sd_model.get_learned_conditioning(prompts)
-
-            if p.cond_override is not None:
-                (uc,c) = p.cond_override(n,uc,c)
+            if p.uconds is not None:
+                uc = torch.cat(p.conds[n * p.batch_size:(n + 1) * p.batch_size])
+            else:
+                uc = p.sd_model.get_learned_conditioning(len(prompts) * [p.negative_prompt])
 
             if len(model_hijack.comments) > 0:
                 comments += model_hijack.comments
