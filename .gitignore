@@ -11,6 +11,7 @@ __pycache__
 /log
 /webui.settings.bat
 /embeddings
+/.vscode
 *.pth
 *.TTF
 /styles.csv

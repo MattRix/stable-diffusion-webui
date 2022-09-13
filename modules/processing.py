@@ -53,6 +53,7 @@ class StableDiffusionProcessing:
         self.extra_generation_params: dict = extra_generation_params
         self.overlay_images = overlay_images
         self.paste_to = None
+        self.cond_override = None
 
     def init(self, seed):
         pass
@@ -118,6 +119,8 @@ def create_random_tensors(shape, seeds, subseeds=None, subseed_strength=0.0, see
         if subnoise is not None:
             #noise = subnoise * subseed_strength + noise * (1 - subseed_strength)
             noise = slerp(subseed_strength, noise, subnoise)
+
+        print(f"actually using seed {seed} with subnoise? {subnoise is not None}")
 
         if noise_shape != shape:
             #noise = torch.nn.functional.interpolate(noise.unsqueeze(1), size=shape[1:], mode="bilinear").squeeze()
@@ -225,8 +228,13 @@ def process_images(p: StableDiffusionProcessing) -> Processed:
             seeds = all_seeds[n * p.batch_size:(n + 1) * p.batch_size]
             subseeds = all_subseeds[n * p.batch_size:(n + 1) * p.batch_size]
 
+            print(f"iter {n} using seeds {seeds}")
+
             uc = p.sd_model.get_learned_conditioning(len(prompts) * [p.negative_prompt])
             c = p.sd_model.get_learned_conditioning(prompts)
+
+            if p.cond_override is not None:
+                (uc,c) = p.cond_override(n,uc,c)
 
             if len(model_hijack.comments) > 0:
                 comments += model_hijack.comments
