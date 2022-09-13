@@ -14,10 +14,12 @@ class Script(scripts.Script):
         return "Prompt blend"
 
     def show(self, is_img2img):
-        return not is_img2img
+        return True
+        #return not is_img2img
 
     def ui(self, is_img2img):
            
+        #how_to = gr.HTML(value="<div style='margin:15px'>Note: Use a higher batch count for more frames. All images use the same seed (even in batches as long as you use a non-'a' sampler).</div>")
         start_prompt = gr.Textbox(label="Start prompt", lines=1)
         end_prompt = gr.Textbox(label="End prompt", lines=1)
             
@@ -43,6 +45,8 @@ class Script(scripts.Script):
         self.total = p.n_iter*p.batch_size 
         self.i = 0
 
+        self.original_sample = p.sample
+
         def sample_extra (x, conditioning, unconditional_conditioning):
 
             start_cond = p.sd_model.get_learned_conditioning([start_prompt])
@@ -51,20 +55,24 @@ class Script(scripts.Script):
             conds = []
 
             for _ in range(p.batch_size):
+
                 #if we are only generating one image, create a 50% blend between start and end prompt
-                blend_percent = self.i/(self.total-1) if self.total > 1 else 0.5
+                blend_percent = self.i/(self.total-1) if self.total > 1 else 0.5 
 
                 #remap percent to within a specific range
-                blend_percent = start_percent + blend_percent * (end_percent-start_percent)
+                blend_percent = start_percent + blend_percent * (end_percent-start_percent) 
 
+                #blend/lerp between the actual conditioning tensors 
                 conds.append(torch.lerp(start_cond,end_cond,blend_percent))
 
-                self.i += 1
+                #we want to blend smoothly within the batches
+                self.i += 1 
 
             conditioning = torch.cat(conds)
 
-            sampler = samplers[p.sampler_index].constructor(p.sd_model)
-            samples_ddim = sampler.sample(p, x, conditioning, unconditional_conditioning)
+            #sampler = samplers[p.sampler_index].constructor(p.sd_model)
+            #samples_ddim = sampler.sample(p, x, conditioning, unconditional_conditioning)
+            samples_ddim = self.original_sample(x, conditioning, unconditional_conditioning)
             
             return samples_ddim
 
