@@ -1,6 +1,7 @@
 from pickletools import optimize
 from re import I
 import imageio
+from modules.images import apply_filename_pattern
 import modules.scripts as scripts
 import gradio as gr
 import torch
@@ -107,9 +108,8 @@ class Script(scripts.Script):
                 durations[0] = 1000
                 durations[-1] = 1000
 
-                result_gif = processed.images[1].save('gif_test.gif', save_all=True, append_images=processed.images[2:], duration=durations, loop=0, subrectangles=True)            #for img in processed.images:
-                process_images.append(result_gif)
-                #    print(f"got image {img}")
+                processed.images[1].save(get_next_gif_filename(p), save_all=True, append_images=processed.images[2:], duration=durations, loop=0, subrectangles=True)            #for img in processed.images:
+
 
         return processed
 
@@ -120,3 +120,26 @@ def slerp(start, end, weight):
     omega = torch.acos((start_norm*end_norm).sum(1))
     sin_omega = torch.sin(omega)
     return (torch.sin((1.0-weight)*omega)/sin_omega).unsqueeze(1)*start + (torch.sin(weight*omega)/sin_omega).unsqueeze(1)*end
+
+def get_next_gif_filename(p):
+    import os
+
+    #find the next grid file name and use the same thing but make it a gif
+    path = p.outpath_grids
+    filecount = len([x for x in os.listdir(path) if os.path.splitext(x)[1] == '.png'])
+
+    print(f"file count is {filecount}")
+    filename = ""
+    for i in range(500): #incrementing from filecount, find the first grid-####.png file that doesn't exist
+        filename = f"{path}/grid-{(filecount+i):04}.png"
+        if not os.path.exists(filename):
+            #use the file before that, since the existing one is the newly created grid
+            filename = f"{path}/grid-{(filecount+i-1):04}.png"
+            break
+
+    print(f"filename after is {filename}")
+
+    filename = filename.replace(".png",".gif")
+    filename = filename.replace("grid-","gif-")
+
+    return filename
