@@ -21,17 +21,18 @@ class Script(scripts.Script):
             start_percent = gr.Number(label="Start percent", value=0.0)
             end_percent = gr.Number(label="End percent", value=1.0)
             prompt_usage = gr.Dropdown(label="Main prompt", choices=["Ignore","Prefix","Suffix"], value="Ignore")
-            frame_count = gr.Number(label="Frame count", value=-1)
+            frame_count = gr.Number(label="Batch count override", value=-1)
 
         with gr.Row():
             start_seed = gr.Number(label="Start seed", value=-1)
             end_seed = gr.Number(label="End seed", value=-1)
+            make_gif = gr.Checkbox(label="Make gif", value=True)
 
         notes = gr.HTML(value="<div style='margin:15px'>Note: Use a higher batch count for more frames. All images use the same seed (even in batches as long as you use a non-'a' sampler).</div>")
 
-        return [start_prompt, end_prompt, start_percent, end_percent, prompt_usage, frame_count, start_seed, end_seed, notes]
+        return [start_prompt, end_prompt, start_percent, end_percent, prompt_usage, frame_count, start_seed, end_seed, make_gif, notes]
 
-    def run(self, p, start_prompt, end_prompt, start_percent, end_percent, prompt_usage, frame_count, start_seed, end_seed, notes):
+    def run(self, p, start_prompt, end_prompt, start_percent, end_percent, prompt_usage, frame_count, start_seed, end_seed, make_gif, notes):
 
         if prompt_usage == "Prefix":
             start_prompt = f"{p.prompt} {start_prompt}"
@@ -48,10 +49,11 @@ class Script(scripts.Script):
 
         self.total = p.n_iter*p.batch_size 
         self.iteration = 0
+        
+        self.should_blend_noise = (start_seed != end_seed) #don't lerp if the seeds are the same, the slerp won't won't work
 
         start_noise = create_random_tensors([opt_C, p.width // opt_f, p.height // opt_f], [start_seed])
         end_noise = create_random_tensors([opt_C, p.width // opt_f, p.height // opt_f], [end_seed])
-
 
         def sample_extra (x, conditioning, unconditional_conditioning):
 
@@ -66,8 +68,8 @@ class Script(scripts.Script):
                 blend_percent = start_percent + blend_percent * (end_percent-start_percent) # remap percent to within a specific range
                 conds.append(torch.lerp(start_cond,end_cond,blend_percent)) # blend/lerp between the actual conditioning tensors 
 
-                #noises.append(torch.lerp(start_noise,end_noise,blend_percent))
-                noises.append(slerp(blend_percent,start_noise,end_noise))
+                if self.should_blend_noise:
+                    noises.append(slerp(start_noise,end_noise,blend_percent))
 
                 self.iteration += 1 # we want to blend smoothly within each batch
 
@@ -89,13 +91,16 @@ class Script(scripts.Script):
 
         processed = process_images(p)
 
+        if make_gif:
+            for img in processed.images:
+                print(f"got image {img}")
+
         return processed
 
 
-def slerp(val, low, high):
-    low_norm = low/torch.norm(low, dim=1, keepdim=True)
-    high_norm = high/torch.norm(high, dim=1, keepdim=True)
-    omega = torch.acos((low_norm*high_norm).sum(1))
-    so = torch.sin(omega)
-    res = (torch.sin((1.0-val)*omega)/so).unsqueeze(1)*low + (torch.sin(val*omega)/so).unsqueeze(1) * high
-    return res
+def slerp(start, end, weight):
+    start_norm = start/torch.norm(start, dim=1, keepdim=True)
+    end_norm = end/torch.norm(end, dim=1, keepdim=True)
+    omega = torch.acos((start_norm*end_norm).sum(1))
+    sin_omega = torch.sin(omega)
+    return (torch.sin((1.0-weight)*omega)/sin_omega).unsqueeze(1)*start + (torch.sin(weight*omega)/sin_omega).unsqueeze(1)*end
