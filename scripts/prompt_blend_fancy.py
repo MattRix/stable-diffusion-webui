@@ -1,3 +1,6 @@
+from pickletools import optimize
+from re import I
+import imageio
 import modules.scripts as scripts
 import gradio as gr
 import torch
@@ -91,9 +94,22 @@ class Script(scripts.Script):
 
         processed = process_images(p)
 
+
+        # gif docs: https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#saving
         if make_gif:
-            for img in processed.images:
-                print(f"got image {img}")
+
+            n_img = len(processed.images)-1
+
+            if n_img >= 2: 
+
+                # note that durations are in milliseconds, and we want to linger on the first and last frames
+                durations = [100] * n_img 
+                durations[0] = 1000
+                durations[-1] = 1000
+
+                result_gif = processed.images[1].save('gif_test.gif', save_all=True, append_images=processed.images[2:], duration=durations, loop=0, subrectangles=True)            #for img in processed.images:
+                process_images.append(result_gif)
+                #    print(f"got image {img}")
 
         return processed
 
