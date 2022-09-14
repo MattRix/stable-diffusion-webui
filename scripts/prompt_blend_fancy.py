@@ -121,6 +121,10 @@ def slerp(start, end, weight):
     sin_omega = torch.sin(omega)
     return (torch.sin((1.0-weight)*omega)/sin_omega).unsqueeze(1)*start + (torch.sin(weight*omega)/sin_omega).unsqueeze(1)*end
 
+# this is a bit of a hack but I didn't want to recreate all the existing filename code
+# and unfortunately I also couldn't just extra the filenames from that stuff
+# so I had to recreate it all in a minimal way. The other option would be to keep gifs with unique file names
+# but then they wouldn't match with their corresponding grids... maybe not a big deal?
 def get_next_gif_filename(p):
     import os
 
@@ -128,7 +132,6 @@ def get_next_gif_filename(p):
     path = p.outpath_grids
     filecount = len([x for x in os.listdir(path) if os.path.splitext(x)[1] == '.png'])
 
-    print(f"file count is {filecount}")
     filename = ""
     for i in range(500): #incrementing from filecount, find the first grid-####.png file that doesn't exist
         filename = f"{path}/grid-{(filecount+i):04}.png"
@@ -136,8 +139,6 @@ def get_next_gif_filename(p):
             #use the file before that, since the existing one is the newly created grid
             filename = f"{path}/grid-{(filecount+i-1):04}.png"
             break
-
-    print(f"filename after is {filename}")
 
     filename = filename.replace(".png",".gif")
     filename = filename.replace("grid-","gif-")
