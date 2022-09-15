@@ -32,7 +32,7 @@ class Script(scripts.Script):
             end_seed = gr.Number(label="End seed", value=-1)
             make_gif = gr.Checkbox(label="Make gif", value=True)
 
-        notes = gr.HTML(value="<div style='margin:15px'>Note: Use a higher batch count for more frames. All images use the same seed (even in batches as long as you use a non-'a' sampler).</div>")
+        notes = gr.HTML(value="<div style='margin:15px'>Note: gifs will output into your grids folder. Make sure you have grids enabled if you have gifs enabled.</div>")
 
         return [start_prompt, end_prompt, start_percent, end_percent, prompt_usage, frame_count, start_seed, end_seed, make_gif, notes]
 
@@ -55,6 +55,21 @@ class Script(scripts.Script):
         self.iteration = 0
         
         self.should_blend_noise = (start_seed != end_seed) #don't lerp if the seeds are the same, the slerp won't won't work
+
+        # set up the start and end seed by pretending they're the real seed 
+        # this generates a random seed if they are set to -1 etc
+
+        orig_seed = p.seed
+
+        p.seed = start_seed
+        fix_seed(p)
+        start_seed = p.seed
+
+        p.seed = end_seed
+        fix_seed(p)
+        end_seed = p.seed
+
+        p.seed = orig_seed
 
         start_noise = create_random_tensors([opt_C, p.height // opt_f, p.width // opt_f], [start_seed])
         end_noise = create_random_tensors([opt_C, p.height // opt_f, p.width // opt_f], [end_seed])
@@ -91,7 +106,7 @@ class Script(scripts.Script):
         fix_seed(p) # use the specified seed or get a random one if needed
         p.seed = p.n_iter*p.batch_size * [int(p.seed)] # force the seed to stay the same for each iteration
 
-        p.extra_generation_params = {"Start percent":start_percent,"End percent":end_percent}
+        p.extra_generation_params = {"Start percent":start_percent,"End percent":end_percent,"Start seed":start_seed,"End seed":end_seed}
 
         processed = process_images(p)
 
