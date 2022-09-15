@@ -56,8 +56,8 @@ class Script(scripts.Script):
         
         self.should_blend_noise = (start_seed != end_seed) #don't lerp if the seeds are the same, the slerp won't won't work
 
-        start_noise = create_random_tensors([opt_C, p.width // opt_f, p.height // opt_f], [start_seed])
-        end_noise = create_random_tensors([opt_C, p.width // opt_f, p.height // opt_f], [end_seed])
+        start_noise = create_random_tensors([opt_C, p.height // opt_f, p.width // opt_f], [start_seed])
+        end_noise = create_random_tensors([opt_C, p.height // opt_f, p.width // opt_f], [end_seed])
 
         def sample_extra (x, conditioning, unconditional_conditioning):
 
