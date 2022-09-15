@@ -106,7 +106,7 @@ class Script(scripts.Script):
         fix_seed(p) # use the specified seed or get a random one if needed
         p.seed = p.n_iter*p.batch_size * [int(p.seed)] # force the seed to stay the same for each iteration
 
-        p.extra_generation_params = {"Start percent":start_percent,"End percent":end_percent,"Start seed":start_seed,"End seed":end_seed}
+        p.extra_generation_params = {"Start percent":start_percent,"End percent":end_percent,"Start seed":int(start_seed),"End seed":int(end_seed)}
 
         processed = process_images(p)
 
