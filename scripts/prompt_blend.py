@@ -1,6 +1,9 @@
+
 import modules.scripts as scripts
 import gradio as gr
 import torch
+from modules import prompt_parser
+from modules import shared
 
 from modules.processing import fix_seed, process_images
 
@@ -69,7 +72,22 @@ class Script(scripts.Script):
 
         p.extra_generation_params = {"Start percent":start_percent,"End percent":end_percent}
 
+        def reconstruct_override(cond, current_step):
+            print(f"Got in reconstruct override {cond}")
+            return cond
+
+        #override the conditioning reconstruction stuff so we don't have to worry about all the prompt editing things
+        original_batch_cond_uncond = shared.batch_cond_uncond
+        shared.batch_cond_uncond = False
+        original_reconstruct = prompt_parser.reconstruct_cond_batch
+        prompt_parser.reconstruct_cond_batch = reconstruct_override
+
         processed = process_images(p)
+
+        #restore the things we overrode
+        prompt_parser.reconstruct_cond_batch = original_reconstruct
+        shared.batch_cond_uncond = original_batch_cond_uncond
+
 
         return processed
 
