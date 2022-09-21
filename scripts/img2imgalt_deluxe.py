@@ -3,6 +3,11 @@ from collections import namedtuple
 import numpy as np
 from tqdm import trange
 
+import os
+import math
+import sys
+import traceback
+
 import modules.scripts as scripts
 import gradio as gr
 
@@ -74,24 +79,60 @@ class Script(scripts.Script):
         original_negative_prompt = gr.Textbox(label="Original negative prompt", lines=1)
 
         st = gr.Slider(label="Decode steps", minimum=1, maximum=150, step=1, value=50)
-        randomness = gr.Slider(label="Randomness", minimum=0.0, maximum=1.0, step=0.01, value=0.0)
 
-        decode_cfg = gr.Slider(label="Override Decode CFG scale", minimum=-5.0, maximum=5.0, step=0.1, value=-0.5)
-        infer_cfg = gr.Slider(label="Override Infer CFG scale", minimum=-5.0, maximum=5.0, step=0.1, value=1.0)
+        decode_cfg = gr.Slider(label="Override Decode CFG scale", minimum=-5.0, maximum=5.0, step=0.1, value=-0.7)
+        infer_cfg = gr.Slider(label="Override Infer CFG scale", minimum=-5.0, maximum=5.0, step=0.1, value=1.2)
 
         batch_mode = gr.Dropdown(label="Batch mode", choices=["Decode","Generate","Decode and Generate"], value="Decode")
 
-        input_dir = gr.Textbox(label="Input image directory", lines=1)
-        input_dir = gr.Textbox(label="Output noise directory", lines=1)
-        output_dir = gr.Textbox(label="Output image directory", lines=1)
+        in_images_dir = gr.Textbox(label="Input image directory", lines=1, value="anims/jp/in_images")
+        out_noise_dir = gr.Textbox(label="Output noise directory", lines=1, value="anims/jp/out_noise")
+        out_images_dir = gr.Textbox(label="Output image directory", lines=1, value="anims/jp/out_images")
 
-        return [original_prompt, original_negative_prompt, st, randomness,decode_cfg,infer_cfg, input_dir, output_dir, batch_mode]
+        return [original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, batch_mode]
 
-    def run(self, p, original_prompt, original_negative_prompt, st, randomness,decode_cfg,infer_cfg, input_dir, output_dir, batch_mode):
-        p.batch_size = 1
+    def run(self, p, original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, batch_mode):
+
+        print(f"input path is {in_images_dir}")
+        image_paths = [file for file in [os.path.join(in_images_dir, x) for x in os.listdir(in_images_dir)] if os.path.isfile(file)]
+
+        images = []
+
+        for path in image_paths:
+            print(f"checking path {path}")
+            try:
+                img = Image.open(path)
+                images.append((img, path))
+            except:
+                print(f"Error processing {path}:", file=sys.stderr)
+                print(traceback.format_exc(), file=sys.stderr)
+
         p.batch_count = 1
+        p.batch_size = 1
+        p.do_not_save_grid = True
+        p.do_not_save_samples = True
 
         p.cfg_scale = infer_cfg
+
+
+        #todo: we have to init the model somehow... we can't do this stuff without an initialized model 
+        #do it in sample! we do everything in sample
+        #we should have a variable called "max images" or something where we only do that many images (or do all if blank/0/-1)
+        for (img,path) in images:
+
+            shared.state.job_count += 1
+            cond = p.sd_model.get_learned_conditioning(p.batch_size * [original_prompt])
+            uncond = p.sd_model.get_learned_conditioning(p.batch_size * [original_negative_prompt])
+            noise = find_noise_for_image(p, cond, uncond, decode_cfg, st)
+
+            outpath = os.path.basename(path)
+            outpath = os.path.join(out_noise_dir, outpath)
+            outpath = outpath+".txt"
+            
+            print(f"saving file to {outpath}")
+            np.savetxt(outpath, noise.numpy())
+
+        return Processed(p, [], p.seed, "")
 
         def sample_extra(conditioning, unconditional_conditioning, seeds, subseeds, subseed_strength):
             lat = (p.init_latent.cpu().numpy() * 10).astype(int)
@@ -101,15 +142,11 @@ class Script(scripts.Script):
             uncond = p.sd_model.get_learned_conditioning(p.batch_size * [original_negative_prompt])
             rec_noise = find_noise_for_image(p, cond, uncond, decode_cfg, st)
 
-            rand_noise = processing.create_random_tensors(p.init_latent.shape[1:], [p.seed + x + 1 for x in range(p.init_latent.shape[0])])
-            
-            combined_noise = ((1 - randomness) * rec_noise + randomness * rand_noise) / ((randomness**2 + (1-randomness)**2) ** 0.5)
-            
             sampler = samplers[p.sampler_index].constructor(p.sd_model)
 
             sigmas = sampler.model_wrap.get_sigmas(p.steps)
             
-            noise_dt = combined_noise - (p.init_latent / sigmas[0])
+            noise_dt = rec_noise - (p.init_latent / sigmas[0])
             
             p.seed = p.seed + 1
             
