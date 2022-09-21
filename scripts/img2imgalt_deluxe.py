@@ -59,12 +59,9 @@ def find_noise_for_image(p, cond, uncond, cfg_scale, steps):
     return x / x.std()
 
 
-Cached = namedtuple("Cached", ["noise", "cfg_scale", "steps", "latent", "original_prompt", "original_negative_prompt"])
-
-
 class Script(scripts.Script):
     def __init__(self):
-        self.cache = None
+        pass
 
     def title(self):
         return "img2img alt deluxe"
@@ -75,35 +72,34 @@ class Script(scripts.Script):
     def ui(self, is_img2img):
         original_prompt = gr.Textbox(label="Original prompt", lines=1)
         original_negative_prompt = gr.Textbox(label="Original negative prompt", lines=1)
-        cfg = gr.Slider(label="Decode CFG scale", minimum=0.0, maximum=15.0, step=0.1, value=1.0)
+
         st = gr.Slider(label="Decode steps", minimum=1, maximum=150, step=1, value=50)
         randomness = gr.Slider(label="Randomness", minimum=0.0, maximum=1.0, step=0.01, value=0.0)
 
-        override_decode_cfg = gr.Slider(label="Override Decode CFG scale", minimum=-5.0, maximum=5.0, step=0.1, value=1.0)
-        override_infer_cfg = gr.Slider(label="Override Infer CFG scale", minimum=-5.0, maximum=5.0, step=0.1, value=1.0)
-        return [original_prompt, original_negative_prompt, cfg, st, randomness,override_decode_cfg,override_infer_cfg]
+        decode_cfg = gr.Slider(label="Override Decode CFG scale", minimum=-5.0, maximum=5.0, step=0.1, value=-0.5)
+        infer_cfg = gr.Slider(label="Override Infer CFG scale", minimum=-5.0, maximum=5.0, step=0.1, value=1.0)
 
-    def run(self, p, original_prompt, original_negative_prompt, cfg, st, randomness,override_decode_cfg,override_infer_cfg):
+        batch_mode = gr.Dropdown(label="Batch mode", choices=["Decode","Generate","Decode and Generate"], value="Decode")
+
+        input_dir = gr.Textbox(label="Input image directory", lines=1)
+        input_dir = gr.Textbox(label="Output noise directory", lines=1)
+        output_dir = gr.Textbox(label="Output image directory", lines=1)
+
+        return [original_prompt, original_negative_prompt, st, randomness,decode_cfg,infer_cfg, input_dir, output_dir, batch_mode]
+
+    def run(self, p, original_prompt, original_negative_prompt, st, randomness,decode_cfg,infer_cfg, input_dir, output_dir, batch_mode):
         p.batch_size = 1
         p.batch_count = 1
 
-        cfg = override_decode_cfg
-        p.cfg_scale = override_infer_cfg
+        p.cfg_scale = infer_cfg
 
         def sample_extra(conditioning, unconditional_conditioning, seeds, subseeds, subseed_strength):
             lat = (p.init_latent.cpu().numpy() * 10).astype(int)
 
-            same_params = self.cache is not None and self.cache.cfg_scale == cfg and self.cache.steps == st and self.cache.original_prompt == original_prompt and self.cache.original_negative_prompt == original_negative_prompt
-            same_everything = same_params and self.cache.latent.shape == lat.shape and np.abs(self.cache.latent-lat).sum() < 100
-
-            if same_everything:
-                rec_noise = self.cache.noise
-            else:
-                shared.state.job_count += 1
-                cond = p.sd_model.get_learned_conditioning(p.batch_size * [original_prompt])
-                uncond = p.sd_model.get_learned_conditioning(p.batch_size * [original_negative_prompt])
-                rec_noise = find_noise_for_image(p, cond, uncond, cfg, st)
-                self.cache = Cached(rec_noise, cfg, st, lat, original_prompt, original_negative_prompt)
+            shared.state.job_count += 1
+            cond = p.sd_model.get_learned_conditioning(p.batch_size * [original_prompt])
+            uncond = p.sd_model.get_learned_conditioning(p.batch_size * [original_negative_prompt])
+            rec_noise = find_noise_for_image(p, cond, uncond, decode_cfg, st)
 
             rand_noise = processing.create_random_tensors(p.init_latent.shape[1:], [p.seed + x + 1 for x in range(p.init_latent.shape[0])])
             
@@ -120,12 +116,6 @@ class Script(scripts.Script):
             return sampler.sample_img2img(p, p.init_latent, noise_dt, conditioning, unconditional_conditioning)
 
         p.sample = sample_extra
-
-        p.extra_generation_params["Decode prompt"] = original_prompt
-        p.extra_generation_params["Decode negative prompt"] = original_negative_prompt
-        p.extra_generation_params["Decode CFG scale"] = cfg
-        p.extra_generation_params["Decode steps"] = st
-        p.extra_generation_params["Randomness"] = randomness
 
         processed = processing.process_images(p)
 
