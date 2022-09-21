@@ -85,23 +85,33 @@ class Script(scripts.Script):
 
         batch_mode = gr.Dropdown(label="Batch mode", choices=["Decode","Generate","Decode and Generate"], value="Decode")
 
+
         with gr.Row():
-            in_images_dir = gr.Textbox(label="Input image directory", lines=1, value="anims/jp/in_images")
-            max_images = gr.Number(label="Max image count", value=0)
-            
-        out_noise_dir = gr.Textbox(label="Output noise directory", lines=1, value="anims/jp/out_noise")
-        out_images_dir = gr.Textbox(label="Output image directory", lines=1, value="anims/jp/out_images")
+            with gr.Column():
+                in_images_dir = gr.Textbox(label="Input image directory", lines=1, value="anims/jp/in_images")
+                out_noise_dir = gr.Textbox(label="Output noise directory", lines=1, value="anims/jp/out_noise")
+                out_images_dir = gr.Textbox(label="Output image directory", lines=1, value="anims/jp/out_images")
+                
+            with gr.Column():
+                max_images = gr.Number(label="Max image count", value=0)
+                first_image_index = gr.Number(label="First image index", value=0)
 
-        return [original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images, batch_mode]
+        return [original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images,first_image_index, batch_mode]
 
-    def run(self, p, original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images, batch_mode):
+    def run(self, p, original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images, first_image_index, batch_mode):
 
         print(f"input path is {in_images_dir}")
         image_paths = [file for file in [os.path.join(in_images_dir, x) for x in os.listdir(in_images_dir)] if os.path.isfile(file)]
 
+        if first_image_index < 0: 
+            first_image_index = 0
+
+        if max_images <= 0:
+            max_images = len(image_paths)
+
         #allow processing only a few images, useful for testing etc 
-        if max_images > 0:
-            image_paths = image_paths[:int(max_images)]
+        
+        image_paths = image_paths[int(first_image_index):int(max_images)]
 
         images = []
 
@@ -146,11 +156,11 @@ class Script(scripts.Script):
             noise = find_noise_for_image(p, cond, uncond, decode_cfg, st)
             
             if self.write_noise:
-                outpath = os.path.basename(self.image_path)
-                outpath = os.path.join(out_noise_dir, outpath)
-                outpath = outpath+".pt"
+                noisepath = os.path.basename(self.image_path)
+                noisepath = os.path.join(out_noise_dir, noisepath)
+                noisepath = noisepath+".pt"
                 #np.savetxt(outpath, noise.numpy())
-                torch.save(noise,outpath)
+                torch.save(noise,noisepath)
 
             if self.write_images:
                 sampler = samplers[p.sampler_index].constructor(p.sd_model)
@@ -168,13 +178,28 @@ class Script(scripts.Script):
 
         fullproc = Processed(p, [], p.seed, "")
 
+
+
         p.sample = sample_extra
-        for (img,path) in images:
+
+
+        state.job_count = len(images)
+
+        for i,(img,path) in enumerate(images):
             p.init_images = [img]
             self.image = img
             self.image_path = path
+
+            state.job = f"{i+1} out of {len(images)}: {self.image_path}"
+
             proc = processing.process_images(p)
-            fullproc.images += proc.images
+            result_image = proc.images[0]
+            fullproc.images.append(result_image)
+            
+            if self.write_images:
+                filename = os.path.basename(path)
+                result_image.save(os.path.join(out_images_dir, filename))
+
 
         #processed.images = []
 
