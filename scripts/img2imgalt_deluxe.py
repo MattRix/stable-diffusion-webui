@@ -1,3 +1,8 @@
+#TODO: add image skipping
+
+
+
+
 from collections import namedtuple
 
 import numpy as np
@@ -83,7 +88,7 @@ class Script(scripts.Script):
         decode_cfg = gr.Slider(label="Override Decode CFG scale", minimum=-5.0, maximum=5.0, step=0.1, value=-0.7)
         infer_cfg = gr.Slider(label="Override Infer CFG scale", minimum=-5.0, maximum=5.0, step=0.1, value=1.2)
 
-        batch_mode = gr.Dropdown(label="Batch mode", choices=["Decode","Generate","Decode and Generate"], value="Decode")
+        batch_mode = gr.Dropdown(label="Batch mode", choices=["Decode Noise","Generate Images","Decode and Generate"], value="Decode Noise")
 
 
         with gr.Row():
@@ -131,8 +136,8 @@ class Script(scripts.Script):
 
         p.cfg_scale = infer_cfg
 
-        self.write_noise = True
-        self.write_images = True
+        self.write_noise = batch_mode == "Decode Noise"
+        self.write_images = batch_mode == "Generate Images"
 
         #todo: we have to init the model somehow... we can't do this stuff without an initialized model 
         #do it in sample! we do everything in sample
@@ -140,22 +145,15 @@ class Script(scripts.Script):
 
         print(f"we are passing {len(p.init_images)} vs {len(images)}")
 
-        self.iterator = 0
-
-        #TODO: process each image one by one (you can later also do these in a batch but not for now)
 
         def sample_extra(conditioning, unconditional_conditioning, seeds, subseeds, subseed_strength):
-            
-            print(f"sampling image for iterator {self.iterator} at {self.image_path}")
-
-            self.iterator += 1    
-
-            shared.state.job_count += 1
-            cond = p.sd_model.get_learned_conditioning(p.batch_size * [original_prompt])
-            uncond = p.sd_model.get_learned_conditioning(p.batch_size * [original_negative_prompt])
-            noise = find_noise_for_image(p, cond, uncond, decode_cfg, st)
-            
+   
             if self.write_noise:
+                shared.state.job_count += 1
+                cond = p.sd_model.get_learned_conditioning(p.batch_size * [original_prompt])
+                uncond = p.sd_model.get_learned_conditioning(p.batch_size * [original_negative_prompt])
+                noise = find_noise_for_image(p, cond, uncond, decode_cfg, st)
+            
                 noisepath = os.path.basename(self.image_path)
                 noisepath = os.path.join(out_noise_dir, noisepath)
                 noisepath = noisepath+".pt"
