@@ -1,0 +1,5 @@
+# list all the files to combine below here
+file 'results/headphones_original.mp4'
+file 'results/headphones_watercolor.mp4'
+file 'results/headphones_black_man.mp4'
+file 'results/headphones_waking.mp4'
