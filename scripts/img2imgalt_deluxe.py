@@ -1,7 +1,16 @@
-#TODO: add image skipping
+'''
+TODO: 
+    - support outputting a null image from the thing (it can be any image, because we will make sure to not save it anyway)
+    - add keyframe list
+        and toggle for "should use keyframes"
 
+notes:
+- if you mix a negative prompt with negative cfg you get some cool stuff 
+- small differences in denoise can make a huge difference
+- play with CFG values as well
+- sometimes stuff looks better at lower steps, don't be afraid of 20 or even 15 
 
-
+'''
 
 from collections import namedtuple
 
@@ -80,15 +89,15 @@ class Script(scripts.Script):
         return is_img2img
 
     def ui(self, is_img2img):
-        original_prompt = gr.Textbox(label="Original prompt", lines=1, value="People staring")
+        original_prompt = gr.Textbox(label="Original prompt", lines=1, value="still from the film jurassic park")
         original_negative_prompt = gr.Textbox(label="Original negative prompt", lines=1)
 
         st = gr.Slider(label="Decode steps", minimum=1, maximum=150, step=1, value=50)
 
         decode_cfg = gr.Slider(label="Override Decode CFG scale", minimum=-5.0, maximum=5.0, step=0.1, value=-0.7)
-        infer_cfg = gr.Slider(label="Override Infer CFG scale", minimum=-5.0, maximum=5.0, step=0.1, value=1.2)
+        infer_cfg = gr.Slider(label="Override Infer CFG scale", minimum=-10.0, maximum=15.0, step=0.1, value=1.2)
 
-        batch_mode = gr.Dropdown(label="Batch mode", choices=["Decode Noise","Generate Images","Decode and Generate"], value="Decode Noise")
+        batch_mode = gr.Dropdown(label="Batch mode", choices=["Decode Noise","Generate Images","Decode and Generate","Do Nothing"], value="Decode Noise")
 
 
         with gr.Row():
@@ -98,8 +107,8 @@ class Script(scripts.Script):
                 out_images_dir = gr.Textbox(label="Output image directory", lines=1, value="anims/jp/out_images")
                 
             with gr.Column():
-                max_images = gr.Number(label="Max image count", value=0)
                 first_image_index = gr.Number(label="First image index", value=0)
+                max_images = gr.Number(label="Max image count", value=0)
 
         return [original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images,first_image_index, batch_mode]
 
@@ -116,12 +125,11 @@ class Script(scripts.Script):
 
         #allow processing only a few images, useful for testing etc 
         
-        image_paths = image_paths[int(first_image_index):int(max_images)]
+        image_paths = image_paths[int(first_image_index):int(first_image_index)+int(max_images)]
 
         images = []
 
         for path in image_paths:
-            print(f"checking path {path}")
             try:
                 img = Image.open(path)
                 images.append((img, path))
@@ -136,29 +144,27 @@ class Script(scripts.Script):
 
         p.cfg_scale = infer_cfg
 
-        self.write_noise = batch_mode == "Decode Noise"
-        self.write_images = batch_mode == "Generate Images"
+        self.write_noise = batch_mode == "Decode Noise" or batch_mode == "Decode and Generate"
+        self.write_images = batch_mode == "Generate Images" or batch_mode == "Decode and Generate"
 
         #todo: we have to init the model somehow... we can't do this stuff without an initialized model 
         #do it in sample! we do everything in sample
         #we should have a variable called "max images" or something where we only do that many images (or do all if blank/0/-1)
 
-        print(f"we are passing {len(p.init_images)} vs {len(images)}")
-
-
         def sample_extra(conditioning, unconditional_conditioning, seeds, subseeds, subseed_strength):
    
+            noisepath = os.path.basename(self.image_path)
+            noisepath = os.path.join(out_noise_dir, noisepath)
+            noisepath = noisepath+".pt"
+
             if self.write_noise:
                 shared.state.job_count += 1
                 cond = p.sd_model.get_learned_conditioning(p.batch_size * [original_prompt])
                 uncond = p.sd_model.get_learned_conditioning(p.batch_size * [original_negative_prompt])
                 noise = find_noise_for_image(p, cond, uncond, decode_cfg, st)
-            
-                noisepath = os.path.basename(self.image_path)
-                noisepath = os.path.join(out_noise_dir, noisepath)
-                noisepath = noisepath+".pt"
-                #np.savetxt(outpath, noise.numpy())
                 torch.save(noise,noisepath)
+            else:
+                noise = torch.load(noisepath)
 
             if self.write_images:
                 sampler = samplers[p.sampler_index].constructor(p.sd_model)
@@ -191,10 +197,11 @@ class Script(scripts.Script):
             state.job = f"{i+1} out of {len(images)}: {self.image_path}"
 
             proc = processing.process_images(p)
-            result_image = proc.images[0]
-            fullproc.images.append(result_image)
-            
+
             if self.write_images:
+                result_image = proc.images[0]
+                fullproc.images.append(result_image)
+                
                 filename = os.path.basename(path)
                 result_image.save(os.path.join(out_images_dir, filename))
 
