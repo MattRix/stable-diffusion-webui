@@ -114,6 +114,9 @@ class Script(scripts.Script):
 
     def run(self, p, original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images, first_image_index, batch_mode):
 
+        os.makedirs(out_noise_dir, exist_ok=True)
+        os.makedirs(out_images_dir, exist_ok=True)
+
         print(f"input path is {in_images_dir}")
         image_paths = [file for file in [os.path.join(in_images_dir, x) for x in os.listdir(in_images_dir)] if os.path.isfile(file)]
 
