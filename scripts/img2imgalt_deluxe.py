@@ -1,5 +1,6 @@
 '''
 TODO: 
+    - figure out how to make the min and max actually update because we need more than 5 CFG! (at worst we can just rename it, I guess)
     - support outputting a null image from the thing (it can be any image, because we will make sure to not save it anyway)
     - add keyframe list
         and toggle for "should use keyframes"
