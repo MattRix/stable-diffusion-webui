@@ -17,6 +17,7 @@ notes:
 from collections import namedtuple
 
 import numpy as np
+from sympy import re
 from tqdm import trange
 
 import os
@@ -24,6 +25,7 @@ import math
 import sys
 import traceback
 from modules import devices
+import torchvision.transforms.functional as TVF
 
 import modules.scripts as scripts
 import gradio as gr
@@ -99,7 +101,7 @@ class Script(scripts.Script):
 
         decode_cfg = gr.Slider(label="Override Decode CFG scale", minimum=-5.0, maximum=5.0, step=0.1, value=-0.7)
         infer_cfg = gr.Slider(label="Override Infer CFG scale", minimum=-10.0, maximum=15.0, step=0.1, value=1.2)
-        infer_cfg.do_not_save_to_config = True
+        sharpness = gr.Slider(label="Sharpness", minimum=-10.0, maximum=10.0, step=0.1, value=1.0)
 
         with gr.Row():
             
@@ -121,9 +123,9 @@ class Script(scripts.Script):
                     keyframe_str = gr.Textbox(label="Keyframes", lines=1, value="")
                     should_use_keyframes = gr.Checkbox(label="Use keyframes?", value=False)
 
-        return [original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images,first_image_index, should_write_noise, should_write_images,keyframe_str,should_use_keyframes]
+        return [original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images,first_image_index, should_write_noise, should_write_images,keyframe_str,should_use_keyframes,sharpness]
 
-    def run(self, p, original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images, first_image_index, should_write_noise, should_write_images,keyframe_str,should_use_keyframes):
+    def run(self, p, original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images, first_image_index, should_write_noise, should_write_images,keyframe_str,should_use_keyframes,sharpness):
 
         self.write_noise = should_write_noise
         self.write_images = should_write_images
@@ -131,10 +133,10 @@ class Script(scripts.Script):
         os.makedirs(out_noise_dir, exist_ok=True)
         os.makedirs(out_images_dir, exist_ok=True)
 
-        print(f"input path is {in_images_dir}")
+
         image_paths = [file for file in [os.path.join(in_images_dir, x) for x in os.listdir(in_images_dir)] if os.path.isfile(file)]
 
-
+        #you can specify comma delimited frame indices to use (including "-1" for the last frame)
         if should_use_keyframes:
             keyframes = [int(x) for x in keyframe_str.split(",")]
             keyframe_image_paths = [image_paths[k] for k in filter(lambda k:k<len(image_paths),keyframes)]
@@ -229,6 +231,10 @@ class Script(scripts.Script):
 
             if self.write_images:
                 result_image = proc.images[0]
+
+                if sharpness != 1.0: 
+                    result_image = TVF.adjust_sharpness(result_image,sharpness)
+
                 fullproc.images.append(result_image)
                 
                 filename = os.path.basename(path)
