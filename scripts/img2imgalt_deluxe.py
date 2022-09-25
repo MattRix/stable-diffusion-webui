@@ -1,7 +1,8 @@
 '''
 TODO: 
     - figure out how to make the min and max actually update because we need more than 5 CFG! (at worst we can just rename it, I guess)
-    - support outputting a null image from the thing (it can be any image, because we will make sure to not save it anyway)
+        - turns out you can edit it in the html, which is silly but yeah 
+    DONE: support outputting a null image from the thing (it can be any image, because we will make sure to not save it anyway)
     - add keyframe list
         and toggle for "should use keyframes"
 
@@ -98,6 +99,7 @@ class Script(scripts.Script):
 
         decode_cfg = gr.Slider(label="Override Decode CFG scale", minimum=-5.0, maximum=5.0, step=0.1, value=-0.7)
         infer_cfg = gr.Slider(label="Override Infer CFG scale", minimum=-10.0, maximum=15.0, step=0.1, value=1.2)
+        infer_cfg.do_not_save_to_config = True
 
         with gr.Row():
             
@@ -115,9 +117,13 @@ class Script(scripts.Script):
                 first_image_index = gr.Number(label="First image index", value=0)
                 max_images = gr.Number(label="Max image count", value=0)
 
-        return [original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images,first_image_index, should_write_noise, should_write_images]
+                with gr.Row():
+                    keyframe_str = gr.Textbox(label="Keyframes", lines=1, value="")
+                    should_use_keyframes = gr.Checkbox(label="Use keyframes?", value=False)
 
-    def run(self, p, original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images, first_image_index, should_write_noise, should_write_images):
+        return [original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images,first_image_index, should_write_noise, should_write_images,keyframe_str,should_use_keyframes]
+
+    def run(self, p, original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images, first_image_index, should_write_noise, should_write_images,keyframe_str,should_use_keyframes):
 
         self.write_noise = should_write_noise
         self.write_images = should_write_images
@@ -128,15 +134,21 @@ class Script(scripts.Script):
         print(f"input path is {in_images_dir}")
         image_paths = [file for file in [os.path.join(in_images_dir, x) for x in os.listdir(in_images_dir)] if os.path.isfile(file)]
 
-        if first_image_index < 0: 
-            first_image_index = 0
 
-        if max_images <= 0:
-            max_images = len(image_paths)
+        if should_use_keyframes:
+            keyframes = [int(x) for x in keyframe_str.split(",")]
+            keyframe_image_paths = [image_paths[k] for k in filter(lambda k:k<len(image_paths),keyframes)]
+            image_paths = keyframe_image_paths
+        else:
+            if first_image_index < 0: 
+                first_image_index = 0
 
-        #allow processing only a few images, useful for testing etc 
-        
-        image_paths = image_paths[int(first_image_index):int(first_image_index)+int(max_images)]
+            if max_images <= 0:
+                max_images = len(image_paths)
+
+            #allow processing only a few images, useful for testing etc 
+            
+            image_paths = image_paths[int(first_image_index):int(first_image_index)+int(max_images)]
 
         images = []
 
