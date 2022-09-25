@@ -22,6 +22,7 @@ import os
 import math
 import sys
 import traceback
+from modules import devices
 
 import modules.scripts as scripts
 import gradio as gr
@@ -98,22 +99,28 @@ class Script(scripts.Script):
         decode_cfg = gr.Slider(label="Override Decode CFG scale", minimum=-5.0, maximum=5.0, step=0.1, value=-0.7)
         infer_cfg = gr.Slider(label="Override Infer CFG scale", minimum=-10.0, maximum=15.0, step=0.1, value=1.2)
 
-        batch_mode = gr.Dropdown(label="Batch mode", choices=["Decode Noise","Generate Images","Decode and Generate","Do Nothing"], value="Decode Noise")
-
-
         with gr.Row():
+            
             with gr.Column():
                 in_images_dir = gr.Textbox(label="Input image directory", lines=1, value="anims/jp/in_images")
                 out_noise_dir = gr.Textbox(label="Output noise directory", lines=1, value="anims/jp/out_noise")
                 out_images_dir = gr.Textbox(label="Output image directory", lines=1, value="anims/jp/out_images")
                 
             with gr.Column():
+
+                with gr.Row():
+                    should_write_noise = gr.Checkbox(label="Decode Noise", value=True)
+                    should_write_images = gr.Checkbox(label="Generate Images", value=True)
+
                 first_image_index = gr.Number(label="First image index", value=0)
                 max_images = gr.Number(label="Max image count", value=0)
 
-        return [original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images,first_image_index, batch_mode]
+        return [original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images,first_image_index, should_write_noise, should_write_images]
 
-    def run(self, p, original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images, first_image_index, batch_mode):
+    def run(self, p, original_prompt, original_negative_prompt, st,decode_cfg,infer_cfg, in_images_dir, out_noise_dir, out_images_dir, max_images, first_image_index, should_write_noise, should_write_images):
+
+        self.write_noise = should_write_noise
+        self.write_images = should_write_images
 
         os.makedirs(out_noise_dir, exist_ok=True)
         os.makedirs(out_images_dir, exist_ok=True)
@@ -148,8 +155,7 @@ class Script(scripts.Script):
 
         p.cfg_scale = infer_cfg
 
-        self.write_noise = batch_mode == "Decode Noise" or batch_mode == "Decode and Generate"
-        self.write_images = batch_mode == "Generate Images" or batch_mode == "Decode and Generate"
+        
 
         #todo: we have to init the model somehow... we can't do this stuff without an initialized model 
         #do it in sample! we do everything in sample
@@ -178,10 +184,17 @@ class Script(scripts.Script):
                 noise_dt = noise - (p.init_latent / sigmas[0])
                 
                 p.seed = p.seed + 1
+
+                out_samples = sampler.sample_img2img(p, p.init_latent, noise_dt, conditioning, unconditional_conditioning)
                 
-                return sampler.sample_img2img(p, p.init_latent, noise_dt, conditioning, unconditional_conditioning)
+                #1,4,48,80
+                #so we have 1 row of all the images, which are each 4 (colors), then 48,80 which are w & h divided by 8
+                #I'm not sure how that gets turned into images though... but we could populate it with either 1 zeroed image or the correct number 
+                #print(f"got samples {out_samples.size()}")
+
+                return out_samples
             else:
-                return None
+                return torch.zeros(1,4,p.height // processing.opt_f,p.width // processing.opt_f,device=devices.device) #null data
 
 
         fullproc = Processed(p, [], p.seed, "")
